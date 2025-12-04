@@ -70,11 +70,11 @@ pub struct MasterParams {
     #[id = "drv"]
     pub drive: FloatParam,
 
-    /// Bus compression amount (NYI in DSP, reserved)
+    /// Bus compression amount
     #[id = "cmp"]
     pub comp: FloatParam,
 
-    /// Send reverb amount (NYI in DSP, reserved)
+    /// Send reverb amount
     #[id = "rev"]
     pub reverb: FloatParam,
 
@@ -104,7 +104,8 @@ impl Default for DrumParams {
 }
 
 impl DrumSlotParams {
-    fn make(
+    /// Construct a slot with explicit values for all macros.
+    pub fn from_values(
         level: f32,
         pan: f32,
         tone: f32,
@@ -161,54 +162,60 @@ impl DrumSlotParams {
 
     pub fn default_kick() -> Self {
         // Punchy, slightly darker, medium-long decay
-        Self::make(0.9, 0.0, 0.4, 300.0, 0.6, 0.0, 0.2)
+        Self::from_values(0.9, 0.0, 0.4, 300.0, 0.6, 0.0, 0.2)
     }
 
     pub fn default_snare() -> Self {
         // Bright, snappy, medium decay
-        Self::make(0.9, 0.0, 0.6, 200.0, 0.7, 0.0, 0.2)
+        Self::from_values(0.9, 0.0, 0.6, 200.0, 0.7, 0.0, 0.2)
     }
 
     pub fn default_clap() -> Self {
         // Bright, snappy, shorter decay
-        Self::make(0.8, 0.0, 0.7, 180.0, 0.8, 0.0, 0.2)
+        Self::from_values(0.8, 0.0, 0.7, 180.0, 0.8, 0.0, 0.2)
     }
 
     pub fn default_hat_closed() -> Self {
         // Short, bright
-        Self::make(0.7, -0.1, 0.8, 80.0, 0.5, 0.0, 0.1)
+        Self::from_values(0.7, -0.1, 0.8, 80.0, 0.5, 0.0, 0.1)
     }
 
     pub fn default_hat_open() -> Self {
         // Longer, bright
-        Self::make(0.7, -0.1, 0.8, 450.0, 0.4, 0.0, 0.1)
+        Self::from_values(0.7, -0.1, 0.8, 450.0, 0.4, 0.0, 0.1)
     }
 
     pub fn default_tom() -> Self {
         // Medium decay, mid tone
-        Self::make(0.8, 0.1, 0.5, 260.0, 0.4, 0.0, 0.1)
+        Self::from_values(0.8, 0.1, 0.5, 260.0, 0.4, 0.0, 0.1)
     }
 
     pub fn default_perc1() -> Self {
         // Slightly bright, medium decay
-        Self::make(0.7, 0.2, 0.7, 220.0, 0.5, 0.0, 0.2)
+        Self::from_values(0.7, 0.2, 0.7, 220.0, 0.5, 0.0, 0.2)
     }
 
     pub fn default_perc2() -> Self {
         // More mid, similar decay
-        Self::make(0.7, 0.3, 0.5, 220.0, 0.5, 0.0, 0.2)
+        Self::from_values(0.7, 0.3, 0.5, 220.0, 0.5, 0.0, 0.2)
     }
 }
 
-impl Default for MasterParams {
-    fn default() -> Self {
+impl MasterParams {
+    pub fn from_values(
+        drive: f32,
+        comp: f32,
+        reverb: f32,
+        kit_pitch: f32,
+        velocity_curve: f32,
+    ) -> Self {
         Self {
-            drive: FloatParam::new("Drive", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            comp: FloatParam::new("Comp", 0.3, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            reverb: FloatParam::new("Reverb", 0.2, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            drive: FloatParam::new("Drive", drive, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            comp: FloatParam::new("Comp", comp, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            reverb: FloatParam::new("Reverb", reverb, FloatRange::Linear { min: 0.0, max: 1.0 }),
             kit_pitch: FloatParam::new(
                 "Kit Pitch",
-                0.0,
+                kit_pitch,
                 FloatRange::Linear {
                     min: -12.0,
                     max: 12.0,
@@ -217,9 +224,15 @@ impl Default for MasterParams {
             .with_unit("st"),
             velocity_curve: FloatParam::new(
                 "Velocity",
-                0.5,
+                velocity_curve,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
         }
+    }
+}
+
+impl Default for MasterParams {
+    fn default() -> Self {
+        Self::from_values(0.1, 0.3, 0.2, 0.0, 0.5)
     }
 }
