@@ -1,42 +1,41 @@
+mod drum_engine;
 mod dsp;
 mod params;
-mod presets;
-mod voice;
 
+use crate::dsp::fast_tanh;
+use drum_engine::{DrumSlot, N_SLOTS, SLOT_TYPES};
 use nih_plug::prelude::*;
+use params::{DrumParams, DrumSlotParams, MasterParams};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use params::*;
-use voice::Voice;
-
-pub struct Vitsel {
-    params: Arc<VitsParams>,
+pub struct MiniDrums {
+    params: Arc<DrumParams>,
     sample_rate: f32,
-    voices: Vec<Voice>,
-    frame_counter: u64,
+    slots: [DrumSlot; N_SLOTS],
 }
 
-impl Default for Vitsel {
+impl Default for MiniDrums {
     fn default() -> Self {
-        let params = Arc::new(VitsParams::default());
         let sr = 44100.0;
-        let maxv = params.max_voices.value() as usize;
+        let params = Arc::new(DrumParams::default());
+
+        let slots = core::array::from_fn(|i| DrumSlot::new(SLOT_TYPES[i], sr));
+
         Self {
             params,
             sample_rate: sr,
-            voices: (0..maxv).map(|_| Voice::new(sr)).collect(),
-            frame_counter: 0,
+            slots,
         }
     }
 }
 
-impl Plugin for Vitsel {
-    const NAME: &'static str = "Vitsel";
+impl Plugin for MiniDrums {
+    const NAME: &'static str = "MiniDrums";
     const VENDOR: &'static str = "me";
-    const URL: &'static str = "https://website.com";
-    const EMAIL: &'static str = "me@website.com";
-    const VERSION: &'static str = "1.0.2";
+    const URL: &'static str = "https://github.com";
+    const EMAIL: &'static str = "me@later.com";
+    const VERSION: &'static str = "0.1.0";
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: None,
@@ -47,7 +46,7 @@ impl Plugin for Vitsel {
     }];
 
     const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
-    const MIDI_OUTPUT: MidiConfig = MidiConfig::Basic; // to send VoiceTerminated
+    const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
     type SysExMessage = ();
@@ -61,24 +60,18 @@ impl Plugin for Vitsel {
         &mut self,
         _io: &AudioIOLayout,
         buffer_config: &BufferConfig,
-        ctx: &mut impl InitContext<Self>,
+        _ctx: &mut impl InitContext<Self>,
     ) -> bool {
-        self.sample_rate = buffer_config.sample_rate;
-
-        // Pre-size voices
-        self.resize_voice_pool();
-
-        // Tell host the initial capacity for CLAP poly-mod
-        if <Self as ClapPlugin>::CLAP_POLY_MODULATION_CONFIG.is_some() {
-            ctx.set_current_voice_capacity(self.voices.len() as u32);
+        self.sample_rate = buffer_config.sample_rate.max(1.0);
+        for slot in &mut self.slots {
+            slot.set_sample_rate(self.sample_rate);
         }
         true
     }
 
     fn reset(&mut self) {
-        self.frame_counter = 0;
-        for v in &mut self.voices {
-            *v = Voice::new(self.sample_rate);
+        for (i, slot) in self.slots.iter_mut().enumerate() {
+            *slot = DrumSlot::new(SLOT_TYPES[i], self.sample_rate);
         }
     }
 
@@ -88,137 +81,74 @@ impl Plugin for Vitsel {
         _aux: &mut AuxiliaryBuffers<'_>,
         ctx: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.frame_counter = self.frame_counter.wrapping_add(1);
-
         let params = self.params.clone();
-        let p_gain = &params.gain;
-        let p_cutoff = &params.cutoff_hz;
-
-        // Dynamically respond to voice count changes
-        let desired = params.max_voices.value() as usize;
-        if desired != self.voices.len() {
-            self.resize_voice_pool();
-            if <Self as ClapPlugin>::CLAP_POLY_MODULATION_CONFIG.is_some() {
-                ctx.set_current_voice_capacity(self.voices.len() as u32);
-            }
-        }
-
-        let wave = params.wave.value();
-        let detune_cents = params.detune.value();
-        let osc_mix = params.osc_mix.value();
-        let q = 1.0f32 + (params.resonance.value() * 7.0);
-        let fmode = params.filter_mode.value();
 
         let mut next_event = ctx.next_event();
 
         for (sample_idx, mut frame) in buffer.iter_samples().enumerate() {
-            // Handle sample-accurate events (may call self.alloc_voice() = &mut self)
+            // Handle sample-accurate events
             while let Some(ev) = next_event {
                 if ev.timing() != sample_idx as u32 {
                     break;
                 }
+
                 match ev {
-                    NoteEvent::NoteOn {
-                        channel,
-                        note,
-                        velocity,
-                        voice_id,
-                        ..
-                    } => {
-                        let slot = self.alloc_voice(); // OK now: no outstanding &self borrows
-                        let v = &mut self.voices[slot];
-                        v.start(
-                            channel,
-                            note,
-                            velocity,
-                            wave,
-                            detune_cents,
-                            self.sample_rate,
-                        );
-                        v.note_id = voice_id.map(|x| x as i32);
-                        v.age = self.frame_counter;
-                    }
-                    NoteEvent::NoteOff {
-                        channel,
-                        note,
-                        voice_id,
-                        ..
-                    } => {
-                        for v in &mut self.voices {
-                            if v.active
-                                && v.channel == channel
-                                && v.note == note
-                                && (voice_id
-                                    .map(|id| v.note_id == Some(id as i32))
-                                    .unwrap_or(true))
-                            {
-                                v.release();
-                            }
+                    NoteEvent::NoteOn { note, velocity, .. } => {
+                        if let Some(slot_idx) = note_to_slot(note) {
+                            let vel = velocity.clamp(0.0, 1.0);
+                            let p = params.as_ref();
+                            let slot_params = match_slot_params(slot_idx, p);
+                            let master = &p.master;
+                            self.slots[slot_idx].trigger(vel, slot_params, master);
                         }
                     }
-                    NoteEvent::PolyModulation {
-                        voice_id,
-                        poly_modulation_id,
-                        normalized_offset,
-                        ..
-                    } => {
-                        for v in &mut self.voices {
-                            if v.active && v.note_id == Some(voice_id as i32) {
-                                match poly_modulation_id {
-                                    1 => v.poly_gain_norm = normalized_offset,
-                                    2 => v.poly_cut_norm = normalized_offset,
-                                    _ => {}
-                                }
-                            }
-                        }
+                    NoteEvent::NoteOff { .. } => {
+                        // One-shot drums; ignore NoteOff for now
                     }
                     _ => {}
                 }
+
                 next_event = ctx.next_event();
             }
 
-            // Render
+            // Render all slots and mix to stereo
             let mut l = 0.0f32;
             let mut r = 0.0f32;
 
-            for v in &mut self.voices {
-                if !v.active {
-                    continue;
+            {
+                let p = params.as_ref();
+                let master = &p.master;
+
+                for (i, slot) in self.slots.iter_mut().enumerate() {
+                    let slot_params = match_slot_params(i, p);
+                    let y = slot.process(slot_params, master);
+
+                    let pan = slot_params.pan.value().clamp(-1.0, 1.0);
+                    let level = slot_params.level.value();
+
+                    let (gain_l, gain_r) = pan_to_gains(pan);
+                    l += y * level * gain_l;
+                    r += y * level * gain_r;
                 }
 
-                v.set_filter(
-                    q,
-                    fmode,
-                    self.sample_rate,
-                    v.poly_cut_norm * params.mod_cutoff.value(),
-                    p_cutoff,
-                );
-                let gain_plain: f32 =
-                    p_gain.preview_modulated(v.poly_gain_norm * params.mod_gain.value());
-
-                let y = v.render(wave, osc_mix, gain_plain);
-                l += y;
-                r += y;
-
-                if !v.active {
-                    ctx.send_event(NoteEvent::VoiceTerminated {
-                        timing: sample_idx as u32,
-                        voice_id: v.note_id,
-                        channel: v.channel,
-                        note: v.note,
-                    });
+                // Simple master drive (saturation)
+                let drive = master.drive.value().clamp(0.0, 1.0);
+                if drive > 0.0 {
+                    let drive_gain = 1.0 + drive * 6.0;
+                    let makeup = 1.0 / (1.0 + drive * 2.0);
+                    l = fast_tanh(l * drive_gain) * makeup;
+                    r = fast_tanh(r * drive_gain) * makeup;
                 }
+
+                // Placeholder: master.comp and master.reverb can be added here later
             }
 
-            let scale = (1.0 / (self.voices.len().max(1) as f32).sqrt()).min(1.0);
-            let out_l = l * scale;
-            let out_r = r * scale;
-            let mut ch = frame.iter_mut();
-            if let Some(s) = ch.next() {
-                *s = out_l;
+            let mut channels = frame.iter_mut();
+            if let Some(out_l) = channels.next() {
+                *out_l = l;
             }
-            if let Some(s) = ch.next() {
-                *s = out_r;
+            if let Some(out_r) = channels.next() {
+                *out_r = r;
             }
         }
 
@@ -226,51 +156,58 @@ impl Plugin for Vitsel {
     }
 }
 
-impl Vitsel {
-    fn resize_voice_pool(&mut self) {
-        let n = self.params.max_voices.value() as usize;
-        if n > self.voices.len() {
-            self.voices
-                .extend((self.voices.len()..n).map(|_| Voice::new(self.sample_rate)));
-        } else {
-            self.voices.truncate(n);
-        }
+fn pan_to_gains(pan: f32) -> (f32, f32) {
+    // Simple equal-power panning
+    let x = (pan + 1.0) * 0.5; // 0..1
+    let theta = x * std::f32::consts::FRAC_PI_2;
+    (theta.cos(), theta.sin())
+}
+
+/// Fixed mapping from MIDI notes to slot indices.
+fn note_to_slot(note: u8) -> Option<usize> {
+    match note {
+        36 => Some(0),           // Kick
+        38 => Some(1),           // Snare
+        39 => Some(2),           // Clap
+        42 => Some(3),           // Closed Hat
+        46 => Some(4),           // Open Hat
+        43 | 45 | 47 => Some(5), // Toms -> Tom slot
+        49 => Some(6),           // Perc 1
+        51 => Some(7),           // Perc 2
+        _ => None,
     }
-    fn alloc_voice(&mut self) -> usize {
-        if let Some(i) = self.voices.iter().position(|v| !v.active) {
-            return i;
-        }
-        let (mut best_i, mut best_age) = (0usize, u64::MAX);
-        for (i, v) in self.voices.iter().enumerate() {
-            if v.age < best_age {
-                best_age = v.age;
-                best_i = i;
-            }
-        }
-        best_i
+}
+
+/// Helper: return the DrumSlotParams for a slot index.
+fn match_slot_params<'a>(index: usize, params: &'a DrumParams) -> &'a DrumSlotParams {
+    match index {
+        0 => &params.kick,
+        1 => &params.snare,
+        2 => &params.clap,
+        3 => &params.hat_closed,
+        4 => &params.hat_open,
+        5 => &params.tom,
+        6 => &params.perc1,
+        7 => &params.perc2,
+        _ => &params.kick,
     }
 }
 
 // CLAP metadata
-impl ClapPlugin for Vitsel {
-    const CLAP_ID: &'static str = "dev.example.vitsel";
+impl ClapPlugin for MiniDrums {
+    const CLAP_ID: &'static str = "dev.example.minidrums";
     const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("Minimal production-ready CLAP synth for Android/desktop.");
+        Some("Minimalist electronic drum synth for beginners.");
     const CLAP_FEATURES: &'static [ClapFeature] = &[
         ClapFeature::Instrument,
-        ClapFeature::Synthesizer,
+        ClapFeature::Drum,
         ClapFeature::Stereo,
     ];
-    const CLAP_POLY_MODULATION_CONFIG: Option<PolyModulationConfig> = Some(PolyModulationConfig {
-        max_voice_capacity: 64,
-        supports_overlapping_voices: true,
-    });
 
-    fn remote_controls(&self, context: &mut impl RemoteControlsContext) {}
+    fn remote_controls(&self, _context: &mut impl RemoteControlsContext) {}
 
-    const CLAP_MANUAL_URL: Option<&'static str> = { Some("Not yet") };
-
-    const CLAP_SUPPORT_URL: Option<&'static str> = { Some("Not yet") };
+    const CLAP_MANUAL_URL: Option<&'static str> = Some("Not yet");
+    const CLAP_SUPPORT_URL: Option<&'static str> = Some("Not yet");
 }
 
-nih_export_clap!(Vitsel);
+nih_export_clap!(MiniDrums);

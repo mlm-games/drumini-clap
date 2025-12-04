@@ -1,258 +1,224 @@
 use nih_plug::prelude::*;
 
+/// Top-level parameters: 8 drum slots + master section.
 #[derive(Params)]
-pub struct VitsParams {
-    // Master / voices
-    #[id = "gain"]
-    pub gain: FloatParam,
-    #[id = "voices"]
-    pub max_voices: IntParam,
+pub struct DrumParams {
+    #[nested(id_prefix = "kick", group = "Kick")]
+    pub kick: DrumSlotParams,
 
-    // Oscillators
-    #[id = "wave"]
-    pub wave: EnumParam<WaveType>,
-    #[id = "osc_mix"]
-    pub osc_mix: FloatParam, // 0..1 mix between osc1 and osc2
-    #[id = "detune"]
-    pub detune: FloatParam, // cents
+    #[nested(id_prefix = "snare", group = "Snare")]
+    pub snare: DrumSlotParams,
 
-    // Envelope
-    #[id = "att"]
-    pub attack_ms: FloatParam,
+    #[nested(id_prefix = "clap", group = "Clap")]
+    pub clap: DrumSlotParams,
+
+    #[nested(id_prefix = "hatc", group = "Closed Hat")]
+    pub hat_closed: DrumSlotParams,
+
+    #[nested(id_prefix = "hato", group = "Open Hat")]
+    pub hat_open: DrumSlotParams,
+
+    #[nested(id_prefix = "tom", group = "Tom")]
+    pub tom: DrumSlotParams,
+
+    #[nested(id_prefix = "pc1", group = "Perc 1")]
+    pub perc1: DrumSlotParams,
+
+    #[nested(id_prefix = "pc2", group = "Perc 2")]
+    pub perc2: DrumSlotParams,
+
+    #[nested(group = "Master")]
+    pub master: MasterParams,
+}
+
+/// Parameters for a single drum slot (Kick/Snare/…)
+#[derive(Params)]
+pub struct DrumSlotParams {
+    /// Output level for this slot
+    #[id = "lvl"]
+    pub level: FloatParam,
+
+    /// Stereo pan (-1 = left, 0 = center, 1 = right)
+    #[id = "pan"]
+    pub pan: FloatParam,
+
+    /// Macro: brightness / filter / oscillator color
+    #[id = "ton"]
+    pub tone: FloatParam,
+
+    /// Macro: amplitude decay (in ms)
     #[id = "dec"]
-    pub decay_ms: FloatParam,
-    #[id = "sus"]
-    pub sustain: FloatParam,
-    #[id = "rel"]
-    pub release_ms: FloatParam,
+    pub decay: FloatParam,
 
-    // Filter
-    #[id = "f_mode"]
-    pub filter_mode: EnumParam<FilterMode>,
-    #[id = "f_cut"]
-    pub cutoff_hz: FloatParam,
-    #[id = "f_res"]
-    pub resonance: FloatParam,
+    /// Macro: transient attack / snap
+    #[id = "snp"]
+    pub snap: FloatParam,
 
-    // Mod routing depths (monophonic scaling of poly offsets)
-    #[id = "mod_cut"]
-    pub mod_cutoff: FloatParam,
-    #[id = "mod_gain"]
-    pub mod_gain: FloatParam,
+    /// Pitch offset in semitones
+    #[id = "pit"]
+    pub pitch: FloatParam,
+
+    /// Humanization amount (randomization of level/decay/pitch)
+    #[id = "hum"]
+    pub humanize: FloatParam,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Enum)]
-pub enum WaveType {
-    Sine,
-    Saw,
-    Square,
-    Triangle,
+/// Global/master controls.
+#[derive(Params)]
+pub struct MasterParams {
+    /// Master drive/saturation
+    #[id = "drv"]
+    pub drive: FloatParam,
+
+    /// Bus compression amount (NYI in DSP, reserved)
+    #[id = "cmp"]
+    pub comp: FloatParam,
+
+    /// Send reverb amount (NYI in DSP, reserved)
+    #[id = "rev"]
+    pub reverb: FloatParam,
+
+    /// Global kit pitch (for toms / 808 styles)
+    #[id = "ktp"]
+    pub kit_pitch: FloatParam,
+
+    /// Velocity curve / sensitivity
+    #[id = "vel"]
+    pub velocity_curve: FloatParam,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Enum)]
-pub enum FilterMode {
-    Off,
-    LowPass,
-    BandPass,
-    HighPass,
-}
-
-impl Default for VitsParams {
+impl Default for DrumParams {
     fn default() -> Self {
         Self {
-            gain: FloatParam::new("Gain", 0.8, FloatRange::Linear { min: 0.0, max: 2.0 })
-                .with_unit("×")
-                .with_poly_modulation_id(1), // per-voice modulation id
-            max_voices: IntParam::new("Voices", 32, IntRange::Linear { min: 1, max: 64 }),
-
-            wave: EnumParam::new("Wave", WaveType::Saw),
-            osc_mix: FloatParam::new("Osc Mix", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            detune: FloatParam::new(
-                "Detune",
-                6.0,
-                FloatRange::Linear {
-                    min: 0.0,
-                    max: 50.0,
-                },
-            )
-            .with_unit("cents"),
-
-            attack_ms: FloatParam::new(
-                "Attack",
-                5.0,
-                FloatRange::Skewed {
-                    min: 0.0,
-                    max: 2000.0,
-                    factor: 2.5,
-                },
-            )
-            .with_unit("ms"),
-            decay_ms: FloatParam::new(
-                "Decay",
-                80.0,
-                FloatRange::Skewed {
-                    min: 1.0,
-                    max: 4000.0,
-                    factor: 2.5,
-                },
-            )
-            .with_unit("ms"),
-            sustain: FloatParam::new("Sustain", 0.7, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            release_ms: FloatParam::new(
-                "Release",
-                150.0,
-                FloatRange::Skewed {
-                    min: 1.0,
-                    max: 8000.0,
-                    factor: 2.5,
-                },
-            )
-            .with_unit("ms"),
-
-            filter_mode: EnumParam::new("Filter", FilterMode::LowPass),
-            cutoff_hz: FloatParam::new(
-                "Cutoff",
-                1600.0,
-                FloatRange::Skewed {
-                    min: 20.0,
-                    max: 20000.0,
-                    factor: 0.2,
-                },
-            )
-            .with_unit("Hz")
-            .with_poly_modulation_id(2),
-            resonance: FloatParam::new("Resonance", 0.2, FloatRange::Linear { min: 0.0, max: 1.0 }),
-
-            mod_cutoff: FloatParam::new(
-                "Mod->Cutoff",
-                0.0,
-                FloatRange::Linear {
-                    min: -1.0,
-                    max: 1.0,
-                },
-            ),
-            mod_gain: FloatParam::new(
-                "Mod->Gain",
-                0.0,
-                FloatRange::Linear {
-                    min: -1.0,
-                    max: 1.0,
-                },
-            ),
+            kick: DrumSlotParams::default_kick(),
+            snare: DrumSlotParams::default_snare(),
+            clap: DrumSlotParams::default_clap(),
+            hat_closed: DrumSlotParams::default_hat_closed(),
+            hat_open: DrumSlotParams::default_hat_open(),
+            tom: DrumSlotParams::default_tom(),
+            perc1: DrumSlotParams::default_perc1(),
+            perc2: DrumSlotParams::default_perc2(),
+            master: MasterParams::default(),
         }
     }
 }
 
-impl VitsParams {
-    #[allow(clippy::too_many_arguments)]
-    pub fn with_values(
-        gain: f32,
-        max_voices: i32,
-        wave: WaveType,
-        osc_mix: f32,
-        detune: f32,
-        attack_ms: f32,
+impl DrumSlotParams {
+    fn make(
+        level: f32,
+        pan: f32,
+        tone: f32,
         decay_ms: f32,
-        sustain: f32,
-        release_ms: f32,
-        filter_mode: FilterMode,
-        cutoff_hz: f32,
-        resonance: f32,
-        mod_cutoff: f32,
-        mod_gain: f32,
+        snap: f32,
+        pitch_st: f32,
+        humanize: f32,
     ) -> Self {
         Self {
-            // Keep ranges/units and poly-mod IDs identical to Default
-            gain: FloatParam::new("Gain", gain, FloatRange::Linear { min: 0.0, max: 2.0 })
-                .with_unit("×")
-                .with_poly_modulation_id(1),
-            max_voices: IntParam::new("Voices", max_voices, IntRange::Linear { min: 1, max: 64 }),
+            level: FloatParam::new("Level", level, FloatRange::Linear { min: 0.0, max: 2.0 })
+                .with_unit("×"),
 
-            wave: EnumParam::new("Wave", wave),
-            osc_mix: FloatParam::new(
-                "Osc Mix",
-                osc_mix,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            ),
-            detune: FloatParam::new(
-                "Detune",
-                detune,
+            pan: FloatParam::new(
+                "Pan",
+                pan,
                 FloatRange::Linear {
-                    min: 0.0,
-                    max: 50.0,
+                    min: -1.0,
+                    max: 1.0,
                 },
-            )
-            .with_unit("cents"),
+            ),
 
-            attack_ms: FloatParam::new(
-                "Attack",
-                attack_ms,
-                FloatRange::Skewed {
-                    min: 0.0,
-                    max: 2000.0,
-                    factor: 2.5,
-                },
-            )
-            .with_unit("ms"),
-            decay_ms: FloatParam::new(
+            tone: FloatParam::new("Tone", tone, FloatRange::Linear { min: 0.0, max: 1.0 }),
+
+            decay: FloatParam::new(
                 "Decay",
                 decay_ms,
                 FloatRange::Skewed {
-                    min: 1.0,
-                    max: 4000.0,
-                    factor: 2.5,
-                },
-            )
-            .with_unit("ms"),
-            sustain: FloatParam::new(
-                "Sustain",
-                sustain,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            ),
-            release_ms: FloatParam::new(
-                "Release",
-                release_ms,
-                FloatRange::Skewed {
-                    min: 1.0,
-                    max: 8000.0,
-                    factor: 2.5,
+                    min: 10.0,
+                    max: 2000.0,
+                    factor: 0.4,
                 },
             )
             .with_unit("ms"),
 
-            filter_mode: EnumParam::new("Filter", filter_mode),
-            cutoff_hz: FloatParam::new(
-                "Cutoff",
-                cutoff_hz,
-                FloatRange::Skewed {
-                    min: 20.0,
-                    max: 20000.0,
-                    factor: 0.2,
+            snap: FloatParam::new("Snap", snap, FloatRange::Linear { min: 0.0, max: 1.0 }),
+
+            pitch: FloatParam::new(
+                "Pitch",
+                pitch_st,
+                FloatRange::Linear {
+                    min: -24.0,
+                    max: 24.0,
                 },
             )
-            .with_unit("Hz")
-            .with_poly_modulation_id(2),
-            resonance: FloatParam::new(
-                "Resonance",
-                resonance,
+            .with_unit("st"),
+
+            humanize: FloatParam::new(
+                "Humanize",
+                humanize,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
+        }
+    }
 
-            mod_cutoff: FloatParam::new(
-                "Mod->Cutoff",
-                mod_cutoff,
+    pub fn default_kick() -> Self {
+        // Punchy, slightly darker, medium-long decay
+        Self::make(0.9, 0.0, 0.4, 300.0, 0.6, 0.0, 0.2)
+    }
+
+    pub fn default_snare() -> Self {
+        // Bright, snappy, medium decay
+        Self::make(0.9, 0.0, 0.6, 200.0, 0.7, 0.0, 0.2)
+    }
+
+    pub fn default_clap() -> Self {
+        // Bright, snappy, shorter decay
+        Self::make(0.8, 0.0, 0.7, 180.0, 0.8, 0.0, 0.2)
+    }
+
+    pub fn default_hat_closed() -> Self {
+        // Short, bright
+        Self::make(0.7, -0.1, 0.8, 80.0, 0.5, 0.0, 0.1)
+    }
+
+    pub fn default_hat_open() -> Self {
+        // Longer, bright
+        Self::make(0.7, -0.1, 0.8, 450.0, 0.4, 0.0, 0.1)
+    }
+
+    pub fn default_tom() -> Self {
+        // Medium decay, mid tone
+        Self::make(0.8, 0.1, 0.5, 260.0, 0.4, 0.0, 0.1)
+    }
+
+    pub fn default_perc1() -> Self {
+        // Slightly bright, medium decay
+        Self::make(0.7, 0.2, 0.7, 220.0, 0.5, 0.0, 0.2)
+    }
+
+    pub fn default_perc2() -> Self {
+        // More mid, similar decay
+        Self::make(0.7, 0.3, 0.5, 220.0, 0.5, 0.0, 0.2)
+    }
+}
+
+impl Default for MasterParams {
+    fn default() -> Self {
+        Self {
+            drive: FloatParam::new("Drive", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            comp: FloatParam::new("Comp", 0.3, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            reverb: FloatParam::new("Reverb", 0.2, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            kit_pitch: FloatParam::new(
+                "Kit Pitch",
+                0.0,
                 FloatRange::Linear {
-                    min: -1.0,
-                    max: 1.0,
+                    min: -12.0,
+                    max: 12.0,
                 },
-            ),
-            mod_gain: FloatParam::new(
-                "Mod->Gain",
-                mod_gain,
-                FloatRange::Linear {
-                    min: -1.0,
-                    max: 1.0,
-                },
+            )
+            .with_unit("st"),
+            velocity_curve: FloatParam::new(
+                "Velocity",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
         }
     }

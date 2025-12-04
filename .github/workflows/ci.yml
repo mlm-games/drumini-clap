@@ -11,10 +11,10 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - run: cargo build --release
     - run: |
-        mkdir -p Vitsel.clap
-        cp target/release/libvitsel.so Vitsel.clap
+        mkdir -p Drumini.clap
+        cp target/release/libdrumini.so Drumini.clap
     - uses: actions/upload-artifact@v4
-      with: { name: vitsel-linux, path: Vitsel.clap }
+      with: { name: drumini-linux, path: Drumini.clap }
 
   windows:
     runs-on: windows-latest
@@ -24,10 +24,10 @@ jobs:
     - run: cargo build --release
     - shell: bash
       run: |
-        mkdir -p Vitsel.clap
-        cp target/release/vitsel.dll Vitsel.clap/
+        mkdir -p Drumini.clap
+        cp target/release/drumini.dll Drumini.clap/
     - uses: actions/upload-artifact@v4
-      with: { name: vitsel-windows, path: Vitsel.clap }
+      with: { name: drumini-windows, path: Drumini.clap }
 
   android-arm64:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
       run: |
         cargo install cargo-ndk --locked
         cargo ndk -t arm64-v8a --platform 26 build --release
-        mkdir -p Vitsel.clap
-        cp target/aarch64-linux-android/release/libvitsel.so Vitsel.clap/
+        mkdir -p Drumini.clap
+        cp target/aarch64-linux-android/release/libdrumini.so Drumini.clap/
     - uses: actions/upload-artifact@v4
-      with: { name: vitsel-android-arm64, path: Vitsel.clap }
+      with: { name: drumini-android-arm64, path: Drumini.clap }

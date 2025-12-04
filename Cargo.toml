@@ -1,11 +1,11 @@
 [package]
-name = "vitsel"
+name = "drumini"
 version = "1.0.2"
 edition = "2024"
 license = "MIT"
 authors = ["mlm-games"]
-description = "Vitsel: minimal Rust CLAP synth"
-repository = "https://github.com/mlm-games/vitsel-clap"
+description = "Drumini: minimal Rust CLAP synth"
+repository = "https://github.com/mlm-games/drumini-clap"
 readme = "README.md"
 categories = ["multimedia::audio", "multimedia::audio::plugins"]
 keywords = ["clap", "synth", "audio", "android", "nih-plug"]
