@@ -106,6 +106,7 @@ impl Default for DrumParams {
 impl DrumSlotParams {
     /// Construct a slot with explicit values for all macros.
     pub fn from_values(
+        label: &str, // NEW: "Kick", "Snare", etc.
         level: f32,
         pan: f32,
         tone: f32,
@@ -114,12 +115,24 @@ impl DrumSlotParams {
         pitch_st: f32,
         humanize: f32,
     ) -> Self {
+        let level_name = format!("{label} Level");
+        let pan_name = format!("{label} Pan");
+        let tone_name = format!("{label} Tone");
+        let decay_name = format!("{label} Decay");
+        let snap_name = format!("{label} Snap");
+        let pitch_name = format!("{label} Pitch");
+        let hum_name = format!("{label} Humanize");
+
         Self {
-            level: FloatParam::new("Level", level, FloatRange::Linear { min: 0.0, max: 2.0 })
-                .with_unit("×"),
+            level: FloatParam::new(
+                &level_name,
+                level,
+                FloatRange::Linear { min: 0.0, max: 2.0 },
+            )
+            .with_unit("×"),
 
             pan: FloatParam::new(
-                "Pan",
+                &pan_name,
                 pan,
                 FloatRange::Linear {
                     min: -1.0,
@@ -127,10 +140,10 @@ impl DrumSlotParams {
                 },
             ),
 
-            tone: FloatParam::new("Tone", tone, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            tone: FloatParam::new(&tone_name, tone, FloatRange::Linear { min: 0.0, max: 1.0 }),
 
             decay: FloatParam::new(
-                "Decay",
+                &decay_name,
                 decay_ms,
                 FloatRange::Skewed {
                     min: 10.0,
@@ -140,10 +153,10 @@ impl DrumSlotParams {
             )
             .with_unit("ms"),
 
-            snap: FloatParam::new("Snap", snap, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            snap: FloatParam::new(&snap_name, snap, FloatRange::Linear { min: 0.0, max: 1.0 }),
 
             pitch: FloatParam::new(
-                "Pitch",
+                &pitch_name,
                 pitch_st,
                 FloatRange::Linear {
                     min: -24.0,
@@ -153,7 +166,7 @@ impl DrumSlotParams {
             .with_unit("st"),
 
             humanize: FloatParam::new(
-                "Humanize",
+                &hum_name,
                 humanize,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
@@ -162,42 +175,42 @@ impl DrumSlotParams {
 
     pub fn default_kick() -> Self {
         // Punchy, slightly darker, medium-long decay
-        Self::from_values(0.9, 0.0, 0.4, 300.0, 0.6, 0.0, 0.2)
+        Self::from_values("Kick", 0.9, 0.0, 0.4, 300.0, 0.6, 0.0, 0.2)
     }
 
     pub fn default_snare() -> Self {
         // Bright, snappy, medium decay
-        Self::from_values(0.9, 0.0, 0.6, 200.0, 0.7, 0.0, 0.2)
+        Self::from_values("Snare", 0.9, 0.0, 0.6, 200.0, 0.7, 0.0, 0.2)
     }
 
     pub fn default_clap() -> Self {
         // Bright, snappy, shorter decay
-        Self::from_values(0.8, 0.0, 0.7, 180.0, 0.8, 0.0, 0.2)
+        Self::from_values("Clap", 0.8, 0.0, 0.7, 180.0, 0.8, 0.0, 0.2)
     }
 
     pub fn default_hat_closed() -> Self {
         // Short, bright
-        Self::from_values(0.7, -0.1, 0.8, 80.0, 0.5, 0.0, 0.1)
+        Self::from_values("HatC", 0.7, -0.1, 0.8, 80.0, 0.5, 0.0, 0.1)
     }
 
     pub fn default_hat_open() -> Self {
         // Longer, bright
-        Self::from_values(0.7, -0.1, 0.8, 450.0, 0.4, 0.0, 0.1)
+        Self::from_values("HatO", 0.7, -0.1, 0.8, 450.0, 0.4, 0.0, 0.1)
     }
 
     pub fn default_tom() -> Self {
         // Medium decay, mid tone
-        Self::from_values(0.8, 0.1, 0.5, 260.0, 0.4, 0.0, 0.1)
+        Self::from_values("Tom", 0.8, 0.1, 0.5, 260.0, 0.4, 0.0, 0.1)
     }
 
     pub fn default_perc1() -> Self {
         // Slightly bright, medium decay
-        Self::from_values(0.7, 0.2, 0.7, 220.0, 0.5, 0.0, 0.2)
+        Self::from_values("Perc1", 0.7, 0.2, 0.7, 220.0, 0.5, 0.0, 0.2)
     }
 
     pub fn default_perc2() -> Self {
         // More mid, similar decay
-        Self::from_values(0.7, 0.3, 0.5, 220.0, 0.5, 0.0, 0.2)
+        Self::from_values("Perc2", 0.7, 0.3, 0.5, 220.0, 0.5, 0.0, 0.2)
     }
 }
 
