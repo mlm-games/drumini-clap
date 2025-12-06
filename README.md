@@ -2,14 +2,6 @@
 
 A small Rust CLAP synth that runs headless on Android (for yadaw) and on desktop CLAP hosts.
 
-Highlights
-- PolyBLEP oscillators: sine, saw, square; triangle via integrated BL square
-- ADSR, zero-delay TPT SVF (LP/BP/HP)
-- Polyphonic modulation for Gain and Cutoff (CLAP), sample-accurate events, VoiceTerminated
-- No allocations or locks in the audio thread, denormal guards, soft-clipper safety
-- 32–64 voices with simple oldest-voice stealing
-- Headless: hosts build a parameter UI (Android-friendly)
-
 Build (Android on-device via Termux)
 ```sh
 pkg update && pkg install -y rust clang cmake ninja pkg-config git
