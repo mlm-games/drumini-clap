@@ -1,6 +1,6 @@
 # Drumini
 
-A small Rust CLAP synth that runs headless on Android (for yadaw) and on desktop CLAP hosts.
+A small Rust CLAP drum plugin that runs headless on Android (for yadaw) and on desktop CLAP hosts.
 
 Build (Android on-device via Termux)
 ```sh
