@@ -24,7 +24,4 @@ Build (desktop quick)
 - Windows (MSVC): `cargo build --release && copy target\release\drumini.dll Drumini.clap`
 - macOS: `cargo build --release` then bundle as a .clap, or use NIH‑plug’s bundler (`cargo xtask bundle` if you set it up)
 
-Notes on CLAP poly‑mod
-- using normalized_offset and Param::preview_modulated() for per‑voice values and emits NoteEvent::VoiceTerminated when voices end; his plugin also sets capacity on init/resize. For more info, see NoteEvent::PolyModulation, Param, and ClapPlugin::PolyModulationConfig in NIH‑plug docs.
-
 [License](LICENSE)
