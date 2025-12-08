@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 // Plugin struct
 
-pub struct MiniDrums {
+pub struct Drumini {
     params: Arc<DrumParams>,
     sample_rate: f32,
     slots: [DrumSlot; N_SLOTS],
@@ -21,7 +21,7 @@ pub struct MiniDrums {
     reverb: SimpleReverb,
 }
 
-impl Default for MiniDrums {
+impl Default for Drumini {
     fn default() -> Self {
         let sr = 44100.0;
         let params = Arc::new(DrumParams::default());
@@ -39,8 +39,8 @@ impl Default for MiniDrums {
 
 // Plugin impl
 
-impl Plugin for MiniDrums {
-    const NAME: &'static str = "MiniDrums";
+impl Plugin for Drumini {
+    const NAME: &'static str = "Drumini";
     const VENDOR: &'static str = "me";
     const URL: &'static str = "https://github.com";
     const EMAIL: &'static str = "me@later.com";
@@ -401,8 +401,8 @@ impl SimpleReverb {
 
 // CLAP metadata
 
-impl ClapPlugin for MiniDrums {
-    const CLAP_ID: &'static str = "dev.example.minidrums";
+impl ClapPlugin for Drumini {
+    const CLAP_ID: &'static str = "dev.example.drumini";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("Minimalist electronic drum synth for beginners.");
     const CLAP_FEATURES: &'static [ClapFeature] = &[
@@ -417,4 +417,4 @@ impl ClapPlugin for MiniDrums {
     const CLAP_SUPPORT_URL: Option<&'static str> = Some("Not yet");
 }
 
-nih_export_clap!(MiniDrums);
+nih_export_clap!(Drumini);
